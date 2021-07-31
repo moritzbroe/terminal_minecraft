@@ -1,4 +1,8 @@
-# ascii_minecraft
+# terminal_minecraft
+
+in linux compile with:
+gcc terminal_minecraft.c -lm -lX11
+
 controls:
 - use arrow keys for moving
 - use w, a, s, d keys for changing view angles
