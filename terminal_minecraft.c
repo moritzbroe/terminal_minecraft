@@ -50,7 +50,7 @@ typedef struct Vector_Vector2 {
 
 
 int key_is_pressed(KeySym ks) {
-    Display *dpy = XOpenDisplay(":0");
+    Display *dpy = XOpenDisplay(NULL);
     char keys_return[32];
     XQueryKeymap(dpy, keys_return);
     KeyCode kc2 = XKeysymToKeycode(dpy, ks);
