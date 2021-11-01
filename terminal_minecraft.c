@@ -50,13 +50,13 @@ typedef struct Vector_Vector2 {
 
 
 int key_is_pressed(KeySym ks) {
-    Display *dpy = XOpenDisplay(":0");
-    char keys_return[32];
-    XQueryKeymap(dpy, keys_return);
-    KeyCode kc2 = XKeysymToKeycode(dpy, ks);
-    int isPressed = !!(keys_return[kc2 >> 3] & (1 << (kc2 & 7)));
-    XCloseDisplay(dpy);
-    return isPressed;
+	Display *dpy = XOpenDisplay(":0");
+	char keys_return[32];
+	XQueryKeymap(dpy, keys_return);
+	KeyCode kc2 = XKeysymToKeycode(dpy, ks);
+	int isPressed = !!(keys_return[kc2 >> 3] & (1 << (kc2 & 7)));
+	XCloseDisplay(dpy);
+	return isPressed;
 }
 
 
