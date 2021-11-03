@@ -4,8 +4,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+
+#ifndef USE_SDL
 #include <X11/Xlib.h>
 #include "X11/keysym.h"
+#else
+#include "SDL2/SDL.h"
+#include "SDL2/SDL_ttf.h"
+
+static const char *videoFont  = "consola.ttf";
+
+typedef struct SDL{
+	SDL_Window   *window;
+	SDL_Surface  *windowSurface;
+	SDL_Event     event;
+    const uint8_t *keys;
+} SDL;
+
+typedef struct Glyph {
+	SDL_Surface *surface;
+	int advance;
+} Glyph;
+#endif
 
 
 #define X_PIXELS 500
@@ -48,7 +68,7 @@ typedef struct Vector_Vector2 {
 } player_pos_view;
 
 
-
+#ifndef USE_SDL
 int key_is_pressed(KeySym ks) {
     Display *dpy = XOpenDisplay(":0");
     char keys_return[32];
@@ -58,7 +78,7 @@ int key_is_pressed(KeySym ks) {
     XCloseDisplay(dpy);
     return isPressed;
 }
-
+#endif
 
 
 vect vect_add(vect v1, vect v2) {
@@ -264,7 +284,7 @@ void get_picture(char **picture, player_pos_view posview, char ***blocks) {
 	}
 }
 
-
+#ifndef USE_SDL
 void draw_ascii(char **picture) {
 	printf("\033[0;0H");	// jump to position 0 0 to overwrite current picture
 	for (int i = 0; i < Y_PIXELS; ++i) {
@@ -274,9 +294,24 @@ void draw_ascii(char **picture) {
 		printf("\n");
 	}	
 }
+#else
+void draw_ascii(char **picture, SDL *sdl, Glyph *glyphs) {
+	for (int i = 0; i < Y_PIXELS; ++i) {
+		for (int j = 0; j < X_PIXELS; ++j) {
+			SDL_Rect location = {j * glyphs[(picture[i][j])].advance, 
+				i * glyphs[(picture[i][j])].surface->h, 
+				0, 0};
+			SDL_BlitSurface(glyphs[(picture[i][j])].surface, NULL, sdl->windowSurface, &location);
+		}
+	}
+}
+#endif
 
-
+#ifndef USE_SDL
 void update_posview(player_pos_view *posview, char*** blocks) {
+#else
+void update_posview(player_pos_view *posview, char*** blocks, SDL *sdl) {
+#endif
 	float move_eps = 0.15;
 	float tilt_eps = 0.03;
 	int x = (int) posview->pos.x, y = (int) posview->pos.y;
@@ -288,6 +323,7 @@ void update_posview(player_pos_view *posview, char*** blocks) {
 	if (blocks[z][y][x] == ' ') {
 		posview->pos.z -= 1;
 	}
+#ifndef USE_SDL
 	if (key_is_pressed(XK_W)) {
 		posview->view.psi += tilt_eps;
 	}
@@ -317,6 +353,41 @@ void update_posview(player_pos_view *posview, char*** blocks) {
 		posview->pos.x -= move_eps*direction.y;
 		posview->pos.y += move_eps*direction.x;
 	}
+#else
+	SDL_PollEvent(&sdl->event);
+	switch (sdl->event.type) {
+		case SDL_KEYDOWN:
+			switch (sdl->event.key.keysym.scancode) {
+				case SDL_SCANCODE_W: posview->view.psi += tilt_eps; break;
+				case SDL_SCANCODE_A: posview->view.psi -= tilt_eps; break;
+				case SDL_SCANCODE_S: posview->view.phi -= tilt_eps; break;
+				case SDL_SCANCODE_D: posview->view.phi += tilt_eps; break;
+				case SDL_SCANCODE_UP:
+					{vect direction = angles_to_vect(posview->view);
+					posview->pos.x += move_eps*direction.x;
+					posview->pos.y += move_eps*direction.y;}
+				break;
+				case SDL_SCANCODE_DOWN:
+					{vect direction = angles_to_vect(posview->view);
+					posview->pos.x -= move_eps*direction.x;
+					posview->pos.y -= move_eps*direction.y;}
+				break;
+				case SDL_SCANCODE_LEFT:
+					{vect direction = angles_to_vect(posview->view);
+					posview->pos.x += move_eps*direction.y;
+					posview->pos.y -= move_eps*direction.x;}
+				break;
+				case SDL_SCANCODE_RIGHT:
+					{vect direction = angles_to_vect(posview->view);
+					posview->pos.x -= move_eps*direction.y;
+					posview->pos.y += move_eps*direction.x;}
+				break;
+			}
+			break;
+		default:
+			return;
+    }
+#endif
 }
 
 
@@ -414,13 +485,40 @@ int main(void) {
 		}
 	}
 
+#ifdef USE_SDL
+	SDL *sdl = malloc(sizeof(SDL));
+
+	SDL_Init((SDL_INIT_VIDEO | SDL_INIT_EVENTS));
+
+	sdl->window = SDL_CreateWindow("terminal_minecraft by Kameldieb", SDL_WINDOWPOS_UNDEFINED,
+		SDL_WINDOWPOS_UNDEFINED, 1080, 768, SDL_WINDOW_SHOWN);
+	sdl->windowSurface = SDL_GetWindowSurface(sdl->window);
+
+	TTF_Init();
+	TTF_Font *font = TTF_OpenFont(videoFont, 3);
+
+	SDL_Color textColor = {0x80, 0x80, 0x80, 0xFF};
+	Glyph textGlyphs[(128)];
+
+	for (int i = 0; i < (128); i++) {
+		textGlyphs[i].surface = TTF_RenderGlyph_Solid(font, i, textColor);
+		TTF_GlyphMetrics(font, i, NULL, NULL, NULL, NULL, &textGlyphs[i].advance);
+	}
+#endif
+
 	// main loop:
 	int i = 0;
 	int place_block_allowed = 1;
 	while (i >= 0) {
 		// updates position and view based on keyboard inputs
+#ifndef USE_SDL
 		update_posview(&posview, blocks);
-		
+#else
+		update_posview(&posview, blocks, sdl);
+		SDL_FillRect(sdl->windowSurface, NULL, 0);
+		sdl->keys = SDL_GetKeyboardState(NULL);
+#endif
+
 		// get block currently pointed at (i.e. block in the middle of the view), mark it visibly
 		vect current_block = get_current_block(posview, blocks);
 		int have_current_block = !ray_outside(current_block);
@@ -429,6 +527,7 @@ int main(void) {
 		int current_block_z = (int) current_block.z;
 		char current_block_c;
 		int removed_block = 0;
+#ifndef USE_SDL
 		if (have_current_block) {
 			current_block_c = blocks[current_block_z][current_block_y][current_block_x];
 			blocks[current_block_z][current_block_y][current_block_x] = 'o';
@@ -449,6 +548,28 @@ int main(void) {
 		else if (!key_is_pressed(XK_space)){
 			place_block_allowed = 1;
 		}
+#else
+		if (have_current_block) {
+			current_block_c = blocks[current_block_z][current_block_y][current_block_x];
+			blocks[current_block_z][current_block_y][current_block_x] = 'o';
+			if (place_block_allowed && sdl->keys[SDL_SCANCODE_BACKSPACE]) {
+				if (sdl->keys[SDL_SCANCODE_LSHIFT]) {
+					blocks[current_block_z][current_block_y][current_block_x] = ' ';
+					removed_block = 1;
+				}
+				else {
+					place_block(current_block, blocks, BLOCK_INFILL_CHAR);
+				}
+				place_block_allowed = 0;
+			}
+			else if (!sdl->keys[SDL_SCANCODE_BACKSPACE]) {
+				place_block_allowed = 1;
+			}
+		}
+		else if (!sdl->keys[SDL_SCANCODE_BACKSPACE]){
+			place_block_allowed = 1;
+		}
+#endif
 		// creates picture
 		get_picture(picture, posview, blocks);
 		// reset current_block char
@@ -457,7 +578,12 @@ int main(void) {
 		}
 
 		// outputs picture
+#ifndef USE_SDL
 		draw_ascii(picture);
+#else
+		draw_ascii(picture, sdl, textGlyphs);
+		SDL_UpdateWindowSurface(sdl->window);
+#endif
 
 	}
 }
